@@ -32,6 +32,10 @@ try:
     from gi.repository import GExiv2
 except ImportError:
     GExiv2 = None
+try:
+    from pyvirtualdisplay import Display
+except ImportError:
+    Display = None
 
 warnings.filterwarnings("ignore", category=InsecurePlatformWarning)
 
@@ -47,7 +51,7 @@ except ImportError:
 class InstaRaider(object):
 
     def __init__(self, username, directory, num_to_download=None,
-                 log_level='info', use_metadata=False):
+                 log_level='info', use_metadata=False, use_virtual_display=False):
         self.username = username
         self.profile_url = self.get_url(username)
         self.directory = directory
@@ -58,8 +62,14 @@ class InstaRaider(object):
         self.log_level = getattr(logging, log_level.upper())
         self.setup_logging(self.log_level)
         self.use_metadata = use_metadata
+        self.use_virtual_display = use_virtual_display
+        self.virtual_display = None
         self.set_num_posts(num_to_download)
         self.setup_webdriver()
+
+    def __del__(self):
+        if self.virtual_display:
+            self.virtual_display.stop()
 
     def get_url(self, path):
         return urlparse.urljoin('https://instagram.com', path)
@@ -78,6 +88,10 @@ class InstaRaider(object):
         self.logger.log(level, u' '.join(str(s) for s in strings))
 
     def setup_webdriver(self):
+        if self.use_virtual_display and Display:
+            self.virtual_display = Display(visible=0, size=(480, 320))
+            self.virtual_display.start()
+
         self.profile = webdriver.FirefoxProfile()
         self.profile.set_preference("general.useragent.override", self.user_agent)
         self.webdriver = webdriver.Firefox(self.profile)
@@ -355,6 +369,10 @@ def main():
                               "post into downloaded images' exif tags "
                               "(requires GExiv2 python module)"),
                         action='store_true', dest='use_metadata')
+    parser.add_argument('-p', '--virtual_display',
+                        help=("Use virtual display driver instead of Firefox"
+                              "Requires xvfb"),
+                        action='store_true', dest='pyvd')
     args = parser.parse_args()
     username = args.username
     directory = op.expanduser(args.directory)
@@ -362,7 +380,8 @@ def main():
     raider = InstaRaider(username, directory,
                          num_to_download=args.num_to_download,
                          log_level=args.log_level,
-                         use_metadata=args.use_metadata)
+                         use_metadata=args.use_metadata,
+                         use_virtual_display=args.pyvd)
 
     if not raider.validate():
         return
